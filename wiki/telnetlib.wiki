@@ -105,7 +105,7 @@ test() ->
   sleep(2),
   write(Conn,"root"),
   sleep(2),
-  write(Conn, "gpbroot"),
+  write(Conn, "root"),
   sleep(2),
   write(Conn, "cat /proc/stat"),
   sleep(10),
