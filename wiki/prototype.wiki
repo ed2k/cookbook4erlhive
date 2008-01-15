@@ -26,3 +26,8 @@ In the case of contract bridge server. A client registers to the server and clai
 The message server implementation could be a good start for getting familiar with erlhive. Of course due to its openness and simplicity any client can connect to the server and client can form its own server. With small modification client can use other transport as well, such as email, IM etc.
 
 The TCP connection between client and server does not need to be maintained all the time. A client pull model is better suited to a message based communication. But it needs to pull more frequently if other player is also human.
+
+references: 
+http://www.kuliniewicz.org/blog/archives/category/coding/old-lady/
+http://bridge.thomasoandrews.com/deal/advanced.html
+http://www.ny-bridge.com/allevy/computerbridge/
