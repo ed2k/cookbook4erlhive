@@ -1,5 +1,5 @@
 #labels contractbridge,card,game
-#a prototype to use erlhive as a message server for card game such as contract bridge
+prototype to use erlhive as a message server for card game such as contract bridge
 = Introduction =
 
 A message server is a common place that maintains queues for sender to place message and receiver to retrieve message.
@@ -7,7 +7,6 @@ A message server is a common place that maintains queues for sender to place mes
 
 = Details =
 
-Add your content here.  Format your content with:
-  * Text in *bold* or _italic_
-  * Headings, paragraphs, and lists
-  * Automatic links to other wiki pages
+Contract bridge server is a good example to make use a simple message server. Traditional implementation such as floater, blue chip bridge requires 4-5 TCP connections between server and player, this put a limitation on internet users that behind firewall to play with each other. A internet hosted server can be used as a transport server to maintain connections to all clients.
+
+In our simple case, no real time communication is needed, a session based communication model is good enough. Thus server can utilize any web based architecture to implement the message server.
