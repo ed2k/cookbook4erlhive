@@ -13,10 +13,12 @@ In our simple case, no real time communication is needed, a session based commun
 
 In general, the message server maintains a list of queues to store messages to or from each client. Each queue can be differentiated by client id based harsh. Client follows a server determined convention to send or receive its message. For instance, 
 A message to a server may look like 
+{{{
 From: client-public-name
 ID: client-server-association-harsh
 To: a list of other clients' public name 
 Content: actual messages
+}}}
 The way it works should be similar to how email works.
 
 In the case of contract bridge server. A client registers to the server and claims to be table manager. The information about the existence of table manager is published. Other clients then can register to the server and send table manager messages to request join the table and once accepted by the manager to choose seat. Table manager will later on send cards to each player and coordinate the progress of auction, playing and scoring.
