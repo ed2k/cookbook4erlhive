@@ -1,0 +1,13 @@
+#labels contractbridge,card,game
+#a prototype to use erlhive as a message server for card game such as contract bridge
+= Introduction =
+
+A message server is a common place that maintains queues for sender to place message and receiver to retrieve message.
+
+
+= Details =
+
+Add your content here.  Format your content with:
+  * Text in *bold* or _italic_
+  * Headings, paragraphs, and lists
+  * Automatic links to other wiki pages
