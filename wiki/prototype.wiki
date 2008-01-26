@@ -34,4 +34,4 @@ references:
 [https://launchpad.net/pybridge pybridge]
 [http://floaterbridge.cvs.sourceforge.net floater]
 [http://freebridge.sourceforge.net/ freebridge]
-[http://www.aleax.it/Bridge/ dds10 solver
+[http://www.aleax.it/Bridge/ dds10 solver]
