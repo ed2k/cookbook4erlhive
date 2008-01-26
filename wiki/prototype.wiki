@@ -28,6 +28,10 @@ The message server implementation could be a good start for getting familiar wit
 The TCP connection between client and server does not need to be maintained all the time. A client pull model is better suited to a message based communication. But it needs to pull more frequently if other player is also human.
 
 references: 
-http://www.kuliniewicz.org/blog/archives/category/coding/old-lady/
-http://bridge.thomasoandrews.com/deal/advanced.html
-http://www.ny-bridge.com/allevy/computerbridge/
+[http://www.kuliniewicz.org/blog/archives/category/coding/old-lady/ oldlady]
+[http://bridge.thomasoandrews.com/deal/advanced.html deal evaluation]
+[http://www.ny-bridge.com/allevy/computerbridge/ computer bridge]
+[https://launchpad.net/pybridge pybridge]
+[http://floaterbridge.cvs.sourceforge.net floater]
+[http://freebridge.sourceforge.net/ freebridge]
+[http://www.aleax.it/Bridge/ dds10 solver
