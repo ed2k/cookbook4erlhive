@@ -1,0 +1,6 @@
+<erl>
+
+out(A) ->
+ yaws_api:call_cgi(A,"/x3/cookbook4python/oldlady/floater-minibridge-server.py").
+ %yaws_api:call_cgi(A,"/x3/cookbook4python/oldlady/floater-3server.py").
+</erl>

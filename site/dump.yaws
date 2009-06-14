@@ -1,0 +1,26 @@
+<erl>
+%% get variable definition of a user's all variables
+-import(erlhive, [with_user/2]).
+-import(lists, [foreach/2]).
+-import(filename, [absname/2]).
+
+get_m_src(_) -> get_m_src("module_dump", <<"joe">>).
+
+get_m_src(Root,User) ->   
+  Mods = with_user(User, fun(M) ->  M:list_variables(module) end),
+  foreach(fun(I) -> 
+        Bin = with_user(User,fun(M) -> M:get_module_src(I) end),
+        Path = absname(atom_to_list(I),Root++"_"++binary_to_list(User)),
+        file:write_file(Path, Bin)
+      end, Mods),
+  ok.
+
+
+
+out(A) -> 
+ F = fun(A) ->
+  get_m_src(yaws_api:parse_query(A)),
+  {html,"aaa"} end,
+ t:checkpass(A,F).
+</erl>
+

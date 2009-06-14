@@ -1,0 +1,657 @@
+<erl>
+%-module(blog).
+%% -compile(export_all).
+%-export([main/1, install_db/0, start/1]).
+
+%-import(yaws_api, [queryvar/2]).
+-import(simple_template, [expand/3]).
+-import(lists, [foreach/2, map/2]).
+-import(erlhive, [with_user/2]).
+
+%-include("./yaws_api.hrl").
+
+%% main entry point called from blag.yawsd
+
+out(Args) ->
+    H = Args#arg.headers,
+    TheCookies = H#headers.cookie,
+    Q = Args#arg.querydata,
+    io:format("~n######## in blog main Q=~p~n",[Q]),
+    case queryvar(Args, "mod") of
+	{ok, "login"} ->
+	    %% login is special so we don't check cookies
+	    %% make a random challenge
+	    Val = make_cookie_session_if_needed(TheCookies),
+	    io:format("Val=~p~n",[Val]),
+	    Val;
+	{ok, "logout"} ->
+	    Val = do_logout(TheCookies),
+	    Val;
+	{ok, "do_login"} ->
+	    try_to_login(TheCookies, Args);
+	_ ->
+	    Auth = is_user_authenticated(TheCookies),
+	    do(Auth, yaws_api:parse_query(Args)++yaws_api:parse_post(Args))
+    end.
+
+%% these are all the modules you need for the blog
+%% everybody needs these
+
+public_modules() -> 
+    [{top_blog, "./"},{page_templates, "./"}].
+
+%% only the user blog needs these
+blog_modules() -> 
+    Dir = "../../erlhive/examples/blog/src/",
+    [{blog_index,Dir},
+     {flexiblog, Dir}].
+
+
+%% Note - in progress much code is never called and
+%% should be removed
+
+%% How does authentication work?
+%%  Find the cookie
+%%    Name  = erlHiveWho
+%%    Value = "nonode@nohost-5965922280199057409"
+%%    If no cookie then NoAuth
+%%    If a Cookie then lookup the value (ie with Key = ...)
+%%    The value can be
+%%       1) {auth, Who}     Then Who
+%%       2) {challenge, C}  Meaning a random number C has been sent
+%%    The user must now reply mod=do_login", [{"name",Who},{"response",R}
+%%    If the response is correct theo okie is changed to {auth, "joe"}
+%%    or noAuth
+
+
+%% The universal entry point
+%% the entry point main(A)
+%% is called from blog.yaws
+%% The following urls are
+%% understood
+%%    mod=login    (no other args)
+%%    mod=logout
+%%    mod=abc func=def args
+%%    user=user usermod=Mod func=fun args ...
+%% The return value is a page
+
+do({auth, Who}, [{"mod", Mod}|Args]) -> auth_do(Who, Mod, Args);
+do(no, [{"mod", Mod}|Args])          -> unauth_do(Mod, Args).
+
+%%----------------------------------------------------------------------
+%% Here we go here we go
+%% Diving into user land
+
+auth_do(Who, Mod, Args) ->
+    %% dive into user-land ... but not yet
+    io:format("Diving into userland: Who=~p Mod=~p Args=~p~n",
+	      [Who, Mod, Args]),
+    Val = case check_args(Args) of
+	      true ->
+		  erlhive:with_user(Who,
+				    fun(M) ->
+					    M:apply(Who, top_blog, 
+						    main_auth, [Mod,Who,Args])
+				    end);
+	      false ->
+		  pre({argsNotStrings, Args})
+	  end,
+    case Val of [{html, _}] -> Val;
+      [{ehtml, _}] -> Val;
+      _ -> 
+    [{html, Val}]
+    end.    
+
+unauth_do(Mod, Args) ->
+    %% dive into user-land ... but not yet
+    io:format("Diving into userland (unauthorised) :  Mod=~p Args=~p~n",
+	      [Mod, Args]),
+    Val = case check_args(Args) of
+	      true ->
+		  erlhive:with_user(<<"guest">>,
+				    fun(M) ->
+					    M:apply(<<"blog">>,
+						    top_blog, main_unauth, 
+						    [Mod,Args])
+				    end);
+	      
+	      false ->
+		  pre({argsNotStrings, Args})
+	  end,
+    [{html, Val}].    
+
+%%----------------------------------------------------------------------
+%%
+%check_args(_) -> true;
+check_args([]) ->
+    true;
+check_args([{Str1, Str2}|T]) ->
+    must_be_string(Str1, Str1) and  
+	must_be_string(Str2, Str2) and
+	check_args(T).
+
+must_be_string([], Str) ->
+    true;
+must_be_string([H|T], Str) when 0  =< H, H =< 255 ->
+    must_be_string(T, Str);
+must_be_string(_, Str) ->
+    false.
+
+%% @spec is_user_authenticated(Cookies) -> {auth, Who::bin()} | no.
+%% 
+is_user_authenticated(C) ->
+    case yaws_api:find_cookie_val("erlHiveWho", C) of
+	[] ->
+	    no;
+	Cookie ->
+	    case yaws_api:cookieval_to_opaque(Cookie) of
+		{ok, {auth, _} = Auth} ->
+		    Auth;
+		_ ->
+		    no
+	    end
+    end.
+
+
+%% We got a do_login request -- check if it's ok
+
+try_to_login(C, Args) -> 
+    case yaws_api:find_cookie_val("erlHiveWho", C) of
+	[] ->
+	    %%;
+	    internal_error(no_cookie);
+	Cookie ->
+	    case yaws_api:cookieval_to_opaque(Cookie) of
+		{ok,{challenge,Ch}} ->
+		    Pq = yaws_api:parse_query(Args),
+		    case Pq of
+			[{"name",Who},{"response",R}|_] ->
+			    case erlhive_gate_admin:get_password(s2b(Who)) of
+				{ok, Secret} ->
+				    io:format("password=~p~n",[Secret]),
+				    %% yes compute the expected response
+				    Expect = pico_md5:string(Ch++b2s(Secret)),
+				    case R of
+					Expect ->
+					    yaws_api:replace_cookie_session(Cookie, 
+									    {auth, s2b(Who)}),
+					    %% The login worked
+					    %% %% C1 =  [pre({yes, Cookie, auth, s2b(Who)})],
+%% %% 					    [{html, expand(main,
+%% %% 							   [{who, Who},
+%% %% 							    {style, expand(style)},
+%% %% 							    {menu, expand(authmenu)},
+%% 							    {content, C1}])}];
+					    auth_do(s2b(Who), "loginOk", "");
+					_ ->
+					    internal_error({should,be,Secret})
+				    end;
+				X ->
+				    internal_error({noSuchuser, Who})
+			    end;
+			_ ->
+			    internal_error({bad_command_1, Pq})
+		    end;
+		Other ->
+		    internal_error({no_challenge, cookieState, was, Other})
+	    end
+    end.
+
+internal_error(What) ->
+    C1 =  [pre({internal_error, What})],
+    [{html, expand(main,
+		   [{who,"unknown"},
+		    {menu, expand(noauthmenu)},
+		    {content, C1}])}].
+
+noauth_banner_page() ->
+    C = d([{menu, e(noauthmenu)},
+	   {content, e(noauthContent)},
+	   {title, "Hello"}]),
+    [{html, C}].
+
+
+unauth_page() ->
+    %% this is the page we get if we are unathenticated
+    expand(main,
+	   [{style,expand(style)},
+	    {title,"Login"},
+	    {menu, expand(noauthmenu)},
+	    {content, ["<p>You are not authenticated",
+		       click("./auth.yaws?mod=showBlogs&id=joe",
+			     "Read Joe's blog")]}
+	   ]).
+
+click(X,Y) ->
+    ["<p><a href='",X,"'>",Y,"</a>"].
+
+
+%% Ran is the challenge
+
+login_page(Ran) ->
+    expand(main, 
+	   [{style,expand(style)},
+	    {title,"User Login"},
+	    {menu, expand(noauthmenu)},
+	    {content, expand(loginMenu, [{challenge,Ran}])}]).
+
+expand(Tag) ->
+    expand(Tag, []).
+
+expand(Tag, Args) ->
+    expand(page_templates, Tag, Args).
+
+login_page1(Ran) ->
+    d([{title,"Login1"},
+       {menu, e(noauthmenu)},
+       {content, e(loginMenu,[{challenge,Ran}])}
+      ]).
+
+pre(X) ->
+    ["<pre>\n", quote(lists:flatten(io_lib:format("~p~n", [X]))),
+     "</pre>\n"].
+
+quote([$<|T]) -> "&lt;" ++ quote(T);
+quote([H|T]) ->[H|quote(T)];
+quote([]) -> [].
+
+d(L) ->
+    e(main, [{style,e(style)}|L]).
+
+e(Tag) -> e(Tag, []).
+    
+e(Tag, A) -> expand(page_templates, Tag, A).
+
+start(_) ->
+    io:format("blog:start -- performing a warm start~n"),
+    spawn(fun() ->
+		  erlhive:start(),
+		  reload(),
+		  forever()
+          end).
+
+
+forever() ->
+    receive never -> true end.
+
+install_db() ->
+    %% initailize *everything*
+    io:format("Performing a cold start of the data base~n"
+              "All old data was deleted~n",[]),
+    io:format("initialising meta data~n",[]),
+    erlhive:run_this_once(),
+    io:format("initialising user tables and data~n",[]),
+    mnesia:start(),
+    Val = (catch erlhive_gate_admin:make_once()),
+    %% create a user joe
+    io:format("creating user joe~n"),
+    erlhive_gate_admin:add_user(<<"root">>, <<"joe">>, <<"simple">>),
+    %% erlhive_gate_admin:add_user(<<"root">>, <<"guest">>, <<"">>),
+    erlhive_gate_admin:add_user(<<"root">>, <<"blog">>, <<"simon">>),
+    %% make a variable xx
+    %%     io:format("creating variable joe.xx~n"),
+    %%     with_user(<<"joe">>, 
+    %% 	      fun(M) ->
+    %% 		      M:create_variable(xx, [public,
+    %% 					     {class, scalar},
+    %% 					     {type, binary},
+    %% 					     {desc, "xx"}]),
+    %% 		      M:store_obj(xx, <<"Hello I'm joe.xx">>)
+    %% 	      end),
+    %% load joe with some code
+    reload(),
+    %% run the global initialisation
+    erlhive:with_user(<<"blog">>,
+		      fun(M) ->
+			      M:apply(<<"blog">>, flexiblog, run_once, [])
+		      end),
+    %% run joe's initialsation
+    Users = [<<"joe">>], %% ,<<"guest">>],
+    foreach(fun(I) ->
+		    erlhive:with_user(I, 
+				      fun(M) ->
+					      M:apply(<<"blog">>, flexiblog,
+						      run_once_per_user, [])
+				      end)
+	    end, Users),
+    done.
+    %init:stop().
+
+reload() ->
+    foreach(fun(I) -> load_public_code(<<"joe">>, I) end, public_modules()),
+    foreach(fun(I) -> load_public_code(<<"blog">>, I) end, blog_modules() ++ public_modules()),
+    %% foreach(fun(I) -> load_public_code(<<"guest">>, I) end, blog_modules()).
+    true.
+
+load_public_code(Who, {Mod, Dir}) ->
+    Src = get_src_code(Mod, Dir),
+    io:format("Load public_code:~p ~p ~p~n",[Who, Mod, length(Src)]),
+    erlhive:with_user(Who, fun(M) -> store_module(M, Mod, Src) end).
+
+store_module(M, Mod, Src) ->
+    %% io:format("trying Mod=~p~n",[Mod]),
+    V1 = (catch M:set_variable(Mod, [{class, module},
+				{area, public}])),
+    %% io:format("V1=~p~n", [V1]),
+    Res = (catch M:store_module(Mod, Src)),
+    io:format("module ~p stored (~p)~n", [Mod, Res]),
+    Res.
+
+
+get_src_code(Mod, SrcDir) ->
+    File = SrcDir ++ atom_to_list(Mod) ++ ".erl",
+    io:format("File = ~p~n", [File]),
+    case file:read_file(File) of
+        {ok, B}    -> binary_to_list(B);
+        {error, _} -> io:format("Cannot locate src for:~p~n",[Mod])
+    end.
+
+random_int_string(N) -> new_seed(), random_int_string(N, []).
+
+random_int_string(0, D) -> D;
+random_int_string(N, D) ->
+    random_int_string(N-1, [random:uniform(10)+$0-1|D]).
+
+new_seed() ->
+    {_,_,X} = erlang:now(),
+    {H,M,S} = time(),
+    H1 = H * X rem 32767,
+    M1 = M * X rem 32767,
+    S1 = S * X rem 32767,
+    put(random_seed, {H1,M1,S1}).
+
+
+b2s(X) ->     
+    binary_to_list(X).
+
+f2b(undefined) -> <<"">>;
+f2b(S) -> s2b(S).
+
+f2s(undefined) -> "";
+f2s(S) -> S.
+    
+
+s2b(S) ->
+    list_to_binary(S).
+
+
+%% do_auth_command(Mod, Who, Args)
+%% do_request(File, Args, Auth, State) ->
+%%   {Content, Title, State'}
+
+-include("userData.hrl").
+
+do_auth_command("maintain", Who, _) ->
+    {ok, U} = erlhive_gate_admin:get_user_data(Who),
+    #userData{realname=R, secret=S, email=E, webPage=W} = U,
+    io:format("User Data for ~p = ~p~n",[Who, U]),
+    Form = make_form("changeUserData",
+		     [{hidden, "mod", "changeUserData"},
+		      {text, "real name",R},
+		      {text, "secret", S}, 
+		      {text, "email", E},
+		      {text, "web page", W}]),
+    Form;
+
+do_auth_command("changeUserData",Who, [{"mod","changeUserData"},
+				       {"real name", R},
+				       {"secret",S},
+				       {"email", E},
+				       {"web page", W}]=L) ->
+    io:format("changeUserData L=~p~n",[L]),
+    {ok, U} =  erlhive_gate_admin:get_user_data(Who),
+    io:format("U=~p~n",[U]),
+    U1 = U#userData{realname=f2b(R), secret=f2b(S), email=f2b(E), 
+		    webPage=f2b(W)},
+    io:format("U1=~p~n",[U1]),
+    erlhive_gate_admin:put_user_data(Who, U1),
+    "<h2>User data updated</h2>";
+do_auth_command("newUser",Who, _) ->
+    e(newUser);
+
+%% add schema
+
+do_auth_command("addSchema",Who, _) ->
+    e(addSchemaMenu);
+do_auth_command("addSchemaDo",Who,[_,
+				   {"name", Nf},
+				   {"type", T},
+				   {"desc", D},
+				   {"area", A},
+				   {"class", C}]) ->
+    Name = bin2term(f2b(Nf)),
+    %% Name = NameStr,
+    Area = bin2atom(f2b(A)),
+    Class = bin2atom(f2b(C)),
+    TypeStr = bin2list(f2b(T)),
+    Desc = bin2list(f2b(D)),
+    Result = erlhive_gate_admin:create_variable(Who, Name, TypeStr, 
+						Desc, Area, Class),
+    ["<h2>My schema is:</h2>", pre(Result)];
+
+
+%% delete Schema
+
+do_auth_command("deleteSchema",Who, _) ->
+    Vars = erlhive_gate_admin:list_schema_vars(Who),
+    %% 	    make a menu
+    M = map(fun(V) -> checkbox(V) end, Vars),
+    io:format("M=~p~n",[M]),
+    e(deleteSchemaMenu, [{rows, M}]);
+do_auth_command("deleteSchemaDo", Who, [_|Args]) ->
+    Vars = map(fun({"check", B}) -> str2term(B) end, Args),
+    io:format("deleteSchemaDo Who=~p Vars=~p~n",[Who, Vars]),
+    Result = erlhive_gate_admin:erase_schema(Who, Vars),
+    ["<h2>Result</h2>", pre(Result)];
+
+do_auth_command("setVar",Who, _) ->
+    e(setMenu);
+do_auth_command("setVarDo", Who, [_,{"name", Ns},{"str", Val}|_]) ->
+    Name = str2term(f2s(Ns)),
+    Val1 = str2term(f2s(Val)),
+    Result = erlhive_gate_admin:set_variable(Who, Name, Val1),
+    ["<h2>My schema is:</h2>", pre(Result)];
+
+do_auth_command("doNewUser",Who, [_,{"name",New}, 
+				  {"password1",Pass1}, 
+				  {"password2",Pass2}]) ->
+    case Pass1 of
+	Pass2 ->
+	    case erlhive_gate_admin:add_user(Who, f2b(New), f2b(Pass1)) of
+		ok ->
+		    "<h2>new user created</h2>";
+		{error, Why} ->
+		    ["<h2>Failed to make new user</h2>",pre({error, Why})]
+	    end;
+	_ ->
+	    <<"<h2>Passwords do not match</h2>">>
+    end;
+do_auth_command("view", Who, _) ->
+    Vars = erlhive_gate_admin:list_schema(Who),
+    ["<h2>Read my vars:</h2>", pre(Vars)];
+do_auth_command(Mod, Who, Q) ->
+    Content = pre({couldNotDoit,Mod,who,Who,q,Q}),
+    Content.
+
+%% do_request("/forgot_response", Args, _Auth, State) ->
+%%     [{<<"name">>,Who}] = Args,
+%%     case  erlhive_gate_admin:get_user_data(Who) of
+%% 	{ok, #userData{secret=P, email=E}} ->
+%% 	    case E of
+%% 		"" ->
+%% 		    {template, "error", 
+%% 		     "<h2>No email adress please change config data</h2>",
+%% 		     State};
+%% 		_ ->
+%% 		    P1 = binary_to_list(P),
+%% 		    email:send(E, "Forgotten password",
+%% 			       "Here is your password for erlhive\n\n"
+%% 			       ++ P1),
+%% 		    {template, "yes",
+%% 		     ["<h2>Mailing password ", P, " to email address: </H2>", E],
+%% 		     State}
+%% 	    end;
+%% 	error ->
+%% 	    {template, "error",
+%% 	     ["<h2>There is no user called  ", Who],
+%% 	     State}
+%%     end;
+
+%% do_request("/list", _, _Auth, State) ->
+%%     Users = erlhive_gate_admin:list_users(),
+%%     {template, "User list",["<h2>Users are</h2>",show(Users)], State};
+
+%% do_request("/make_new_user", [{<<"name">>,New},
+%% 			      {<<"password1">>,Pass1},
+%% 			      {<<"password2">>,Pass2}],
+%% 	   Auth,
+%% 	   State) ->
+%%     case Auth of
+%% 	no ->
+%% 	    {template, "error", "Internal error", start};
+%% 	{yes, U} ->
+%% 	    case Pass1 of
+%% 		Pass2 ->
+%% 		    Name = U#userData.name,
+%% 		    case erlhive_gate_admin:add_user(Name, New, Pass1) of
+%% 			ok ->
+%% 			    {template, "yes", "<h2>new user created</h2>", State};
+%% 			{error, Why} ->
+%% 			    {template, "error",
+%% 			     ["<h2>Failed to make new user</h2>",show(Why)],
+%% 			     State}
+%% 		    end;
+%% 		_ ->
+%% 		    {template, "error", "<h2>Passwords do not match</h2>", State}
+%% 	    end
+%%     end;
+
+
+%% do_request("/new", _, Auth, State) ->
+%%     case Auth of
+%% 	no ->
+%% 	    R = expand_template_with("new_user_not_logged_in.html", []),
+%% 	    {template, "Not logged in", R, State};
+%% 	{yes, U} ->
+%% 	    Name = U#userData.name,
+%% 	    io:format("name=~p~n",[Name]),
+%% 	    R = expand_template_with("new_user.html", [{"who", Name}]),
+%% 	    {template,"New user", R, State}
+%%     end;
+
+%% do_request("/schema", _Args, Auth, State) ->
+%%     case Auth of
+%% 	{yes, U} ->
+%% 	    Who = U#userData.name,
+%% 	    Vars = erlhive_gate_admin:list_schema(Who),
+%% 	    {template, "yes", ["<h2>My schema is:</h2>", show(Vars)], State};
+%% 	no ->
+%% 	    {template, "error", "<h2>please login</h2>", State}
+%%     end;
+
+%% do_request("/eval", [{<<"eval">>, Str}], Auth, State) ->
+%%     case Auth of
+%% 	{yes, U} ->
+%% 	    Who = U#userData.name,
+%% 	    %% Name = str2term(NameStr),
+%% 	    Result = erlhive_gate_admin:eval(Who, Str),
+%% 	    {template, "yes", ["<h2>Eval result:</h2>", show(Result)], State};
+%% 	no ->
+%% 	    {template, "error", "<h2>please login</h2>", State}
+%%     end;
+
+
+%% do_request("/make_new_variable", [{<<"name">>, NameBin},
+%% 				  {<<"type">>, DataTypeBin},
+%% 				  {<<"desc">>, DescBin},
+%% 				  {<<"area">>, AreaBin},
+%% 				  {<<"class">>, ClassBin}],
+%% 	   Auth, State) ->
+%%     case Auth of
+%% 	{yes, U} ->
+%% 	    Who = U#userData.name,
+%% 	    Name = bin2term(NameBin),
+%% 	    %% Name = NameStr,
+%% 	    Area = bin2atom(AreaBin),
+%% 	    Class = bin2atom(ClassBin),
+%% 	    TypeStr = bin2list(DataTypeBin),
+%% 	    Desc = bin2list(DescBin),
+%% 	    Result = erlhive_gate_admin:create_variable(Who, Name, TypeStr, Desc, Area, Class),
+%% 	    {template, "yes", ["<h2>My schema is:</h2>", show(Result)], State};
+%% 	no ->
+%% 	    {template, "error", "<h2>please login</h2>", State}
+%%     end;
+
+
+%% do_request(_File, _A, _Auth, _State) ->
+%%     no.
+
+
+make_form(Action, Assoc) ->
+    ["<form action='t.yaws?'>",
+     map(fun make_form_row/1, Assoc), 
+     "<p><input value='Change' type='submit'></form>"].
+
+make_form_row({text, Key,Val}) ->
+    ["<p><label>",Key,"</label\n<input type='text' name='",Key,
+     "' value='",Val,"'>\n"];
+make_form_row({hidden, Key,Val}) ->
+    ["<input type='hidden' name='",Key, "' value='",Val,"'>\n"].
+
+%%----------------------------------------------------------------------
+%% make a cookie session (we might have one so check first)
+
+make_cookie_session_if_needed(TheCookies) -> 
+    case yaws_api:find_cookie_val("erlHiveWho", TheCookies) of
+	[] ->
+	    Ran    = random_int_string(20),
+	    Cookie = yaws_api:new_cookie_session({challenge, Ran}),
+	    C1 = yaws_api:setcookie("erlHiveWho", Cookie, "/", "March 30, 2009"),
+	    io:format("Here1 C1=~p~n",[C1]),
+	    [C1, {html, login_page(Ran)}];
+	Cookie ->
+	    Ran = random_int_string(20),
+	    case yaws_api:replace_cookie_session(Cookie, {challenge, Ran}) of
+		error ->
+		    %% this happens with a stale cookie
+		    %% If the server has been restarted
+		    %% then the client will have a stale cookie
+		    Cookie1 = yaws_api:new_cookie_session({challenge, Ran}),
+		    C1 = yaws_api:setcookie("erlHiveWho", Cookie1, "/","June 30, 2009"),
+		    [C1, {html, login_page(Ran)}];
+		true ->
+		    [{html, login_page(Ran)}]
+	    end
+    end.
+    
+do_logout(TheCookies) ->
+    case yaws_api:find_cookie_val("erlHiveWho", TheCookies) of
+	[] ->
+	    %% Nothing special to do ...
+	    %% we are logged out
+	    true;
+	Cookie ->
+	    yaws_api:delete_cookie_session(Cookie)
+    end,
+    [{html, unauth_page()}].
+    
+str2term(Str) ->
+    {ok, Tokens, _} = erl_scan:string(Str ++ ". "),
+    {ok, Term} = erl_parse:parse_term(Tokens),
+    Term.
+
+bin2term(Bin) ->    
+    str2term(bin2list(Bin)).
+
+
+bin2list(Bin) -> binary_to_list(Bin).
+
+bin2atom(Bin) -> list_to_atom(bin2list(Bin)).
+
+checkbox(Term) ->
+    Str = term2str(Term),
+    ["<input class=\"radio\" type=\"checkbox\" name=\"check\" value=\"",
+     Str,"\">",Str,"</input><p>"].
+term2str(Term) -> lists:flatten(io_lib:format("~p",[Term])).
+
+</erl>

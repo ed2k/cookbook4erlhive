@@ -1,0 +1,105 @@
+<erl>
+
+box(Str) ->
+     {pre,[], yaws_api:htmlize(Str)}.
+
+lnk(Str) ->
+     Hstr = yaws_api:htmlize(Str),
+     {p, [] , [{a,[{href, Hstr}], Hstr}] }.
+
+
+%filter(L) -> L;
+filter(L) ->
+  Today = calendar:date_to_gregorian_days(date()),
+  % get file whithin a week
+  Filter = fun(File) ->
+   {T,_} = filelib:last_modified(File),
+   D1 = calendar:date_to_gregorian_days(T),
+   if (D1+7) > Today -> true;
+     true -> false
+   end
+  end,
+  lists:filter(Filter,L).
+
+% redirect to table manager
+main([{"floater",Msg}]) ->
+ URL = "http://localhost:10101/postit.yaws?flproxyB="++yaws_api:url_encode(Msg),
+ error_logger:info_report(URL),
+ {ok,Result} = http:request(URL),
+ {html, Result};
+
+%main([{"flproxyB",undefined}]) ->
+% case yawsinit:message_recv("flproxyB") of [] -> {html, "nothing"};
+%    L -> {html, lists:foldl(fun({_,M}, Acc) -> binary_to_list(M)++Acc end, "", L) } 
+%  end;
+main([{"flproxyB",Send}]) ->
+  case Send of undefined -> nothing;
+    _ -> yawsinit:message_send("flproxyB","flproxyA",list_to_binary(Send))
+  end,
+ case yawsinit:message_recv("flproxyB") of [] -> {html, "nothing"};
+    L -> {html, lists:foldl(fun({_,M}, Acc) -> binary_to_list(M)++Acc end, "", L) } 
+  end;
+
+main([{"rcvTo",RcvTo},{"sentFrom",SentFrom},{"sentTo",SentTo},{"sentMsg",SentMsg}]) ->
+ RecvMsg = yawsinit:message_recv(RcvTo),
+ yawsinit:message_send(SentFrom,SentTo,SentMsg),
+  {ehtml, box(io_lib:print(RecvMsg))
+   } ;
+main([{"mtest","get"}]) -> 
+  case yawsinit:message_recv("flproxyBbbb") of [] -> {html, "nothing"};
+    L -> {html, lists:foldl(fun({_,M}, Acc) -> (M)++Acc end, "", L) } 
+  end;
+main([{"mtest","input"}]) -> 
+  spawn(floater_proxy,start,["127.0.0.1",10100]),
+  {ehtml, 
+    {form,[{action,"postit.yaws"},{method,post}],
+        [{a,[],"Receive message to: "}, {input,[{type,text},{name,"rcvTo"}]}, {br,[]},
+         {a,[],"From: "}, {input,[{type,text},{name,"sentFrom"}]},
+         {a,[],"To: "}, {input,[{type,text},{name,"sentTo"}]},
+         {input,[{type,submit},{value,"send"}]},
+         {textarea,[{rows,5},{cols,120},{name,sentMsg}]}         
+        ]} 
+   };
+main([{"whatsnew", undefined}]) -> main([{"whatsnew", "7"}]);
+main([{"whatsnew", D}]) ->
+  % one line fix to limit input < 365
+  Days = list_to_integer(D) rem 365,
+  Dir1 = "/x2/amuledup/Movies/", 
+  Dir2 = "/x2/newmovies/dcff/",
+  D3 = "/mnt/40g",
+  L2 = yawsinit:whatsnew([Dir1,Dir2,D3],Days),
+  [{ehtml, 
+    {'div',[], [ lnk(X) || X <- lists:sort(L2) ] }
+  }];
+
+main([{"src",Src}]) ->
+ %file:write_file("postit.tmp",Src),
+ yawsinit:postit_new(Src),
+ [
+  {ehtml,
+    {'div', [],[
+       {form,[{action,"postit.yaws"},{method,post}
+        ],
+        [
+         {textarea,[{rows,5},{cols,120},{name,src}],Src},
+         {input,[{type,submit},{value,"postit"}]}
+        ]}
+     ]}
+   }] ;
+main([])->
+ %{ok, Src} = file:read_file("postit.tmp"),
+ Src = yawsinit:postit_get(),
+ main([{"src",Src}]);
+main(X) -> {ehtml,box(io_lib:print(X))}.
+
+ %error_logger:info_report(Req#http_request.method),
+
+out(A) ->
+  Req = A#arg.req,
+  case Req#http_request.method of 'GET' -> main(yaws_api:parse_query(A));
+    'POST' -> 
+       main(yaws_api:parse_query(A)++yaws_api:parse_post(A))
+  end.
+
+</erl>
+

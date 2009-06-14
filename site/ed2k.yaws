@@ -1,0 +1,17 @@
+<erl>
+
+default_user(A) ->
+    case queryvar(A,"f") of
+        {ok, Val} ->
+            Val
+    end.
+
+admin1(F) ->
+   file:write_file("/home/a/.aMule/ED2KLinks",list_to_binary(F)),   
+   yaws_api:htmlize(F).
+    
+
+out(A) ->
+        {html,admin1(default_user(A))}.
+</erl>
+

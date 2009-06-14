@@ -1,0 +1,39 @@
+<html>
+  <head>
+    <script type="text/javascript" src="jquery-1.1.3.1.pack.js"></script>
+    <script type="text/javascript" src="jquery.autocomplete.js"></script>
+<link rel="stylesheet" type="text/css" href="jquery.autocomplete.css" />
+    <script type="text/javascript" src="jquery.cookie.js"></script>
+
+    <script type="text/javascript">
+      // test java script and jquery
+      // Your code goes here
+var hist_arr = [];
+$(document).ready(function(){
+ $('#u').autocomplete("list_users.yaws");
+
+ // display chinese characters
+ $('#m').focus(function(){
+   var who =  $('#u').attr('value');
+   $.cookie('who',who);
+   $('#m').autocomplete('list_module.yaws');
+   return false;
+ });
+
+ $('#getmsrc').click(function(){
+   $('#src').load('get_module_src2.yaws?u='+$('#u').attr('value')+'&c='+$('#m').attr('value'));
+   return false;
+ });
+//end of jquery
+});
+
+
+    </script>
+  </head>
+
+
+<input id="u"></input><input id="m"></input><input id=getmsrc type="submit" value="module src"></input><input type="checkbox" name="write">write to database?</input>
+<textarea rows="35" cols="120" id="src">
+</textarea>
+
+</html>
