@@ -1,0 +1,8 @@
+<erl>
+who() ->
+  N = [binary_to_list(U)++"\n" || U <- erlhive:admin(fun(M)->M:list_users() end)],
+  lists:concat(N).
+out(A) ->
+        {html,who()}.
+</erl>
+

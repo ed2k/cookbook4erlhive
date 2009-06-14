@@ -1,0 +1,19 @@
+<erl>
+%% get variable definition of a user's all variables
+
+a2d(A,Key) -> 
+  {ok,V} = queryvar(A,Key),
+  V.
+
+get_m_src(A) ->
+  W = list_to_binary(a2d(A,"u")),
+  Mod = list_to_atom(a2d(A,"c")),
+  U = erlhive:with_user(W,fun(M)->M:get_module_src(Mod) end),
+  {_,S,_} = regexp:gsub(binary_to_list(U), "\\&", "\\&amp;"),  
+  {_,S1,_} = regexp:gsub(S, "<", "\\&lt;"),  
+  S1.
+
+out(A) ->
+  t:checkpass(A,fun(A)-> {html, get_m_src(A)} end).
+</erl>
+

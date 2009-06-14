@@ -1,0 +1,81 @@
+<html>
+  <head>
+    <script type="text/javascript" src="jquery-1.1.3.1.pack.js"></script>
+    <script type="text/javascript" src="jquery.autocomplete.js"></script>
+ <link rel="stylesheet" type="text/css" href="jquery.autocomplete.css" />
+    <script type="text/javascript" src="jquery.cookie.js"></script>
+
+    <script type="text/javascript">
+// test java script and jquery
+var imgList;
+var hist_arr = [];
+var lnk = '/x2/x3/jpg/';
+$(document).ready(function(){
+ if ( c = $.cookie('cmdhistory')){
+     hist_arr = c.split('\n');
+     //$('#sugg').html(c);
+     $('#uin').autocompleteArray(hist_arr);
+ }
+
+ // display chinese characters
+ $('#run').click(function(){
+   var dir =  $('#uin').attr('value');
+   if (! dir) dir = '';
+   $('#usee').load('fe2.yaws?f='+ dir);
+   //TODO: tab auto complete  
+   // per account cookie
+   for (var i=0; i<hist_arr.length;i++) {
+      if (hist_arr[i] == dir) return ;
+   }
+   hist_arr.push(dir);
+   $('#uin').autocompleteArray(hist_arr);
+   $.cookie('cmdhistory',hist_arr.join('\n'));
+   //$('#sugg').html(hist_arr.join('\n'));
+   return false;
+ });
+
+// TODO click input field, select all, return == button click
+ $('#ed2kBtn').click(function(){
+   var lnk =  $('#ed2kLnk').attr('value');
+   if (! lnk) return false;
+   $('#ed2kResult').load('ed2k.yaws?f='+ lnk);
+
+   return false;
+ });
+
+ $('#run2').click(function(){
+   var cmd = $('#uin2').attr('value').split(' ');
+   if (cmd.length == 3){
+     $('#usee2').load('/user1.yaws?u='+cmd[0]+'&c='+cmd[1]+'&n='+cmd[2]);
+   } else if(cmd.length == 2) {
+     $('#usee2').load('/user0.yaws?u='+cmd[0]+'&c='+cmd[1]);
+   }
+ });
+ var v = 'l_001a52efefa0cf18b6e40262475bef5f.jpg';
+ $('#usee').html('start loading picture list...\n');
+ $.getJSON('fe2.yaws?f='+ lnk,function(data){
+     imgList = data
+     $('#usee').html('done.');
+ });
+ $('#getjpg2').click(function(){
+   $('#imgContainer').html('');
+   for (i=0;i<9;i++){
+     var n = Math.floor(Math.random()*imgList.length);
+     $("<img/>").attr('src',lnk+imgList[n]).appendTo('#imgContainer');
+   }
+ });
+}); // end of on document ready
+    </script>
+  </head>
+<div id=imgContainer ></div>
+<div id=getjpg2 style="float:left;cursor:pointer;position:fixed;opacity:.5;background: #ee1111;top:30">get 9 of them</div>
+
+<input type=text id=uin size=60><input id=run type=submit value='list file'>
+<pre id=usee></pre>
+<input type=text id=uin2 size=60><input id=run2 type=submit value=user1>
+<pre id=usee2> </pre>
+
+<input type=text id=ed2kLnk size=60><input id=ed2kBtn type=submit value='add ed2k link'>
+<pre id=ed2kResult></pre>
+
+</html>

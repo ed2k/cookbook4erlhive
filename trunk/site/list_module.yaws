@@ -1,0 +1,15 @@
+<erl>
+who(A) ->
+  H = A#arg.headers,
+  C = H#headers.cookie,
+  case yaws_api:find_cookie_val("who",C) of
+  Who -> 
+    Vs = erlhive:with_user(list_to_binary(Who),fun(M)-> M:list_variables(module) end),
+    N = [atom_to_list(U)++"\n" || U <- Vs],
+    lists:concat(N)
+  end.
+
+out(A) ->
+        {html,who(A)}.
+</erl>
+

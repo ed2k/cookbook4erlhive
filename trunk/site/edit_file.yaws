@@ -1,0 +1,55 @@
+<erl>
+%% simple web i/f to edit a text file
+% test problem with </textarea>, <textarea> 
+
+a2d(A,Key) -> 
+  {ok,V} = postvar(A,Key),
+  V.
+
+
+default_f(A) ->
+    case postvar(A,"f") of
+        undefined -> "/mnt/hdc5/start.sh";
+        {ok, Val} ->
+            Val
+    end.
+
+
+get_m_src(A) ->
+  F = default_f(A),
+  case file:read_file(F) of {ok, U} ->
+    {_,S,_} = regexp:gsub(binary_to_list(U), "\\&", "\\&amp;"),  
+    {_,S1,_} = regexp:gsub(S, "<", "\\&lt;"),  
+    S1;
+   Error -> lists:flatten(io_lib:print(Error))
+  end.
+
+written(A) ->
+  F = a2d(A,"f"),
+  Src = a2d(A,"src"),
+  U = file:write_file(F,Src),
+  lists:flatten(io_lib:print(U)).
+
+write_to_src(A) ->
+  case postvar(A,"write") of
+    undefined -> "write to disk?";
+    {ok, "on" } -> "written to " ++ written(A)
+  end.  
+
+out(A) ->
+ F= fun(A)->  [
+  {ehtml,
+    {'div', [],[
+       {form,[{action,"/edit_file.yaws"},{method,post}
+        ],
+        [
+         {input,[{type,text},{name,f},{size,65},{value,default_f(A)}]},
+         {input,[{type,submit},{value,"edit file"}]},
+         {input,[{type,checkbox},{name,write}],write_to_src(A)},
+         {textarea,[{rows,35},{cols,120},{name,src}],get_m_src(A)}
+        ]}
+     ]}
+   }] end,
+ t:checkpass(A,F).
+</erl>
+

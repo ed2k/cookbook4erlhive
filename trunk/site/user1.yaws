@@ -1,0 +1,20 @@
+<erl>
+%% get variable definition of a user's all variables
+
+
+get(A,Name) ->
+   {ok,V} = queryvar(A,Name),
+   V.
+
+user1(A) ->
+  W = list_to_binary(get(A,"u")),
+  F = list_to_atom(get(A,"c")),
+  Name = list_to_atom(get(A,"n")),
+  U = erlhive:with_user(W,fun(M)->M:F(Name) end),
+  lists:flatten(io_lib:print(U)).
+
+
+out(A) ->
+  t:checkpass(A,fun(A)-> {html, user1(A)} end).
+</erl>
+

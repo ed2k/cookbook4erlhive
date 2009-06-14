@@ -1,0 +1,3 @@
+<erl>
+out(Args) -> ts:main(Args).
+</erl>

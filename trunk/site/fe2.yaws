@@ -1,0 +1,28 @@
+<erl>
+%% simple file explorer
+
+box(Str) ->
+    {'div',[{class,"box"}],
+     {pre,[], yaws_api:htmlize(Str)}}.
+
+default_user(A) ->
+    case queryvar(A,"f") of
+        undefined -> "/mnt/hdc5/erlhive";
+        {ok, Val} ->
+            Val
+    end.
+
+admin1(Cmd,F) ->
+  case filelib:is_dir(F) of
+    true -> {ok,U} = file:list_dir(F),
+        lists:flatten(io_lib:print(U));
+    _ -> {ok,U} = file:read_file(F),
+         yaws_api:htmlize(binary_to_list(U))
+  end. 
+    
+
+out(A) ->
+ F = fun(A) -> {html,admin1(default,default_user(A))} end,
+ t:checkpass(A,F).
+</erl>
+

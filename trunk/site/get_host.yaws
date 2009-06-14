@@ -1,0 +1,24 @@
+<erl>
+
+default_user(A) ->
+    case queryvar(A,"f") of
+        undefined -> "/mnt/hdc5/erlhive/nofrills-1.0/src";
+        {ok, Val} ->
+            Val
+    end.
+
+%% simple cookie based or challenge password protect, ip based?
+admin1(F) ->
+  case filelib:is_dir(F) of
+    true -> {ok,U} = file:list_dir(F),
+        lists:flatten(io_lib:print(U));
+    _ -> {ok,U} = file:read_file(F),
+         yaws_api:htmlize(binary_to_list(U))
+  end. 
+    
+
+out(A) ->
+  H = A#arg.headers,
+  {html,string:left(H#headers.host,11)}.
+</erl>
+
