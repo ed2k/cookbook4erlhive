@@ -1,0 +1,87 @@
+
+```
+<erl>
+%% get variable definition of a user's all variables
+-record(userData,
+        {name   = [], %% the user name
+         realname = [], %% full name
+         cookie = [], %% a random unique string
+         secret = [], %% the user password
+         email  = [], %% the email
+         quota  = 1000000, %% 1 Mbyte
+         parent = [], %% the person who introduced me
+         children = [], %% a list of people I have introduced,
+         src = [],
+         webPage = []   %% my web page
+         }).
+
+a2d(A,Key) -> 
+  {ok,V} = postvar(A,Key),
+  V.
+
+
+box(Str) ->
+    {'div',[{class,"box"}],
+     {pre,[], yaws_api:htmlize(Str)}}.
+
+default_user(A) ->
+    case postvar(A,"u") of
+        undefined -> "joe";
+        {ok, Val} ->
+            Val
+    end.
+default_command(A) ->
+    case postvar(A,"c") of
+        undefined -> "top_blog";
+        {ok, Val} ->
+            Val
+    end.
+
+
+user0(Who,Cmd) ->
+  W = list_to_binary(Who),
+  F = list_to_atom(Cmd),
+  U = erlhive:with_user(W,fun(M)->M:F() end),
+  lists:flatten(io_lib:print(U)).
+
+get_m_src(A) ->
+  W = list_to_binary(default_user(A)),
+  Mod = list_to_atom(default_command(A)),
+  U = erlhive:with_user(W,fun(M)->M:get_module_src(Mod) end),
+  {_,S,_} = regexp:gsub(binary_to_list(U), "<", "\\&lt;"),  
+  {_,S1,_} = regexp:gsub(S, ">", "\\&gt;"),  
+  S1.
+
+written(A) ->
+  Who = list_to_binary(a2d(A,"u")),
+  Mod = list_to_atom(a2d(A,"c")),
+  Src = a2d(A,"src"),
+  U = erlhive:with_user(Who,fun(M)->M:store_module(Mod,Src) end),
+  lists:flatten(io_lib:print(U)).
+
+write_to_src(A) ->
+  case postvar(A,"write") of
+    undefined -> "write to database?";
+    {ok, "on" } -> "written to " ++ written(A)
+  end.  
+
+out(A) ->
+  [
+  {ehtml,
+    {'div', [],[
+       {form,[{action,"/get_module_src.yaws"},{method,post}
+        ],
+        [
+         {input,[{type,text},{name,u},{value,default_user(A)}]},
+         {input,[{type,text},{name,c},{value,default_command(A)}]},
+         {input,[{type,submit},{value,"gooo"}]},
+         {input,[{type,checkbox},{name,write}],write_to_src(A)},
+         {textarea,[{rows,25},{cols,120},{name,src}],get_m_src(A)}
+        ]},
+        box(io_lib:format('~p', [yaws_api:parse_post(A)])),
+        box(user0(default_user(A),"list_variables"))
+     ]}
+   }].
+</erl>
+
+```

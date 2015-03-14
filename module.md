@@ -1,0 +1,61 @@
+
+```
+<erl>
+%% get variable definition of a user's all variables
+
+box(Str) ->
+    {'div',[{class,"box"}],
+     {pre,[], yaws_api:htmlize(Str)}}.
+
+default_user(A) ->
+    case queryvar(A,"u") of
+        undefined -> "root";
+        {ok, Val} ->
+            Val
+    end.
+default_command(A) ->
+    case queryvar(A,"c") of
+        undefined -> "describe_user";
+        {ok, Val} ->
+            Val
+    end.
+
+
+admin0(Cmd) ->
+  F = list_to_atom(Cmd),
+  U = erlhive:admin(fun(M)->M:F() end),
+  lists:flatten(io_lib:print(U)).
+
+user0(Who,Cmd) ->
+  W = list_to_binary(Who),
+  F = list_to_atom(Cmd),
+  U = erlhive:with_user(W,fun(M)->M:F() end),
+  lists:flatten(io_lib:print(U)).
+
+get_vars (Who) ->
+  W = list_to_binary(Who),
+  Vs = erlhive:with_user(W,fun(M)->M:list_variables() end),
+  U = [{V,erlhive:with_user(W,fun(M)->M:get_variable(V) end)} || 
+        V <- Vs],
+  lists:flatten(io_lib:print(U)).   
+
+out(A) ->
+  [
+  {ehtml,
+    {'div', [],[
+       {form,[{action,"/module.yaws"},{method,get}
+        ],
+        [
+         {input,[{type,text},{name,u},{value,default_user(A)}]},
+         {input,[{type,text},{name,c},{value,default_command(A)}]},
+         {input,[{type,submit},{value,"gooo"}]}
+        ]},
+        box(io_lib:format('~p', [yaws_api:parse_query(A)])),
+        box(admin0("list_users")),
+        box(user0(default_user(A),"list_variables")),
+        box(get_vars(default_user(A)))
+     ]}
+   }].
+</erl>
+
+```
